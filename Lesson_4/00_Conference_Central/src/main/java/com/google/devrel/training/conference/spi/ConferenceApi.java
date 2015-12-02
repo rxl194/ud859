@@ -3,18 +3,32 @@ package com.google.devrel.training.conference.spi;
 import static com.google.devrel.training.conference.service.OfyService.factory;
 import static com.google.devrel.training.conference.service.OfyService.ofy;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
+import javax.inject.Named;
+
 import com.google.api.server.spi.config.Api;
 import com.google.api.server.spi.config.ApiMethod;
 import com.google.api.server.spi.config.ApiMethod.HttpMethod;
+import com.google.api.server.spi.response.ConflictException;
+import com.google.api.server.spi.response.ForbiddenException;
+import com.google.api.server.spi.response.NotFoundException;
 import com.google.api.server.spi.response.UnauthorizedException;
+import com.google.appengine.api.taskqueue.Queue;
+import com.google.appengine.api.taskqueue.QueueFactory;
+import com.google.appengine.api.taskqueue.TaskOptions;
 import com.google.appengine.api.users.User;
 import com.google.devrel.training.conference.Constants;
-import com.google.devrel.training.conference.domain.Profile;
 import com.google.devrel.training.conference.domain.Conference;
-import com.google.devrel.training.conference.form.ProfileForm;
+import com.google.devrel.training.conference.domain.Profile;
 import com.google.devrel.training.conference.form.ConferenceForm;
+import com.google.devrel.training.conference.form.ProfileForm;
 import com.google.devrel.training.conference.form.ProfileForm.TeeShirtSize;
 import com.googlecode.objectify.Key;
+import com.googlecode.objectify.Work;
+import com.googlecode.objectify.cmd.Query;
 
 /**
  * Defines conference APIs.
@@ -182,5 +196,93 @@ public class ConferenceApi {
 
 	return conference;
     }
+
+
+    public List<Conference> queryConferences_nofilters() {
+        // Find all entities of type Conference
+        Query<Conference> query = ofy().load().type(Conference.class).order("name");
+        return query.list();
+    }
+
+    /**
+     * Queries against the datastore with the given filters and returns the result.
+     *
+     * Normally this kind of method is supposed to get invoked by a GET HTTP method,
+     * but we do it with POST, in order to receive conferenceQueryForm Object via the POST body.
+     *
+     * @param conferenceQueryForm A form object representing the query.
+     * @return A List of Conferences that match the query.
+     */
+    @ApiMethod(
+            name = "queryConferences",
+            path = "queryConferences",
+            httpMethod = HttpMethod.POST
+    )
+    public List<Conference> queryConferences() {
+        return queryConferences_nofilters();
+    }
+
+
+    /**
+     * Returns a list of Conferences that the user created.
+     * In order to receive the websafeConferenceKey via the JSON params, uses a POST method.
+     *
+     * @param user A user who invokes this method, null when the user is not signed in.
+     * @return a list of Conferences that the user created.
+     * @throws UnauthorizedException when the user is not signed in.
+     */
+    @ApiMethod(
+            name = "getConferencesCreated",
+            path = "getConferencesCreated",
+            httpMethod = HttpMethod.POST
+    )
+    public List<Conference> getConferencesCreated(final User user) throws UnauthorizedException {
+        // If not signed in, throw a 401 error.
+        if (user == null) {
+            throw new UnauthorizedException("Authorization required");
+        }
+        String userId = user.getUserId();
+        Key<Profile> userKey = Key.create(Profile.class, userId);
+        return ofy().load().type(Conference.class)
+                .ancestor(userKey)
+                .order("name").list();
+    }
+
+
+    public List<Conference> filterPlayground() {
+        // Query<Conference> query = ofy().load().type(Conference.class).order("name");
+        Query<Conference> query = ofy().load().type(Conference.class);
+
+        // Filter on city
+        query = query.filter("city =", "London");
+/*
+        // query = query.filter("city =", "Default City");
+
+        // Add a filter for topic = "Medical Innovations"
+        query = query.filter("topics =", "Medical Innovations");
+
+        // Add a filter for maxAttendees
+        query = query.filter("maxAttendees >", 8);
+        query = query.filter("maxAttendees <", 10).order("maxAttendees").order("name");
+
+        // Add a filter for month {unindexed composite query}
+        // Find conferences in June
+        query = query.filter("month =", 6);
+        */
+
+        // multiple sort orders
+
+/*
+        query = query.filter("city =", "Tokyo").filter("seatsAvailable <", 10).
+                filter("seatsAvailable >" , 0).order("seatsAvailable").order("name").
+                order("month");
+*/
+
+
+        return query.list();
+    }
+
+
+
 
 }
