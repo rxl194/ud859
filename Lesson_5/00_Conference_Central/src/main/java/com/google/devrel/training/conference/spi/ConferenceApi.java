@@ -16,11 +16,14 @@ import com.google.api.server.spi.response.ConflictException;
 import com.google.api.server.spi.response.ForbiddenException;
 import com.google.api.server.spi.response.NotFoundException;
 import com.google.api.server.spi.response.UnauthorizedException;
+import com.google.appengine.api.memcache.MemcacheService;
+import com.google.appengine.api.memcache.MemcacheServiceFactory;
 import com.google.appengine.api.taskqueue.Queue;
 import com.google.appengine.api.taskqueue.QueueFactory;
 import com.google.appengine.api.taskqueue.TaskOptions;
 import com.google.appengine.api.users.User;
 import com.google.devrel.training.conference.Constants;
+import com.google.devrel.training.conference.domain.Announcement;
 import com.google.devrel.training.conference.domain.Conference;
 import com.google.devrel.training.conference.domain.Profile;
 import com.google.devrel.training.conference.form.ConferenceForm;
@@ -547,6 +550,20 @@ public class ConferenceApi {
             keysToAttend.add(Key.<Conference>create(keyString));
         }
         return ofy().load().keys(keysToAttend).values();
+    }
+    
+    @ApiMethod(
+            name = "getAnnouncement",
+            path = "announcement",
+            httpMethod = HttpMethod.GET
+    )
+    public Announcement getAnnouncement() {
+        MemcacheService memcacheService = MemcacheServiceFactory.getMemcacheService();
+        Object message = memcacheService.get(Constants.MEMCACHE_ANNOUNCEMENTS_KEY);
+        if (message != null) {
+            return new Announcement(message.toString());
+        }
+        return null;
     }
 
 }
