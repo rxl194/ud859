@@ -178,44 +178,35 @@ public class ConferenceApi {
      */
     @ApiMethod(name = "createConference", path = "conference", httpMethod = HttpMethod.POST)
     public Conference createConference(final User user, final ConferenceForm conferenceForm)
-        throws UnauthorizedException {
+            throws UnauthorizedException {
         if (user == null) {
             throw new UnauthorizedException("Authorization required");
         }
-
-        // TODO (Lesson 4)
-        // Get the userId of the logged in User
-        String userId = user.getUserId();
-
-        // TODO (Lesson 4)
-        // Get the key for the User's Profile
+        // Allocate Id first, in order to make the transaction idempotent.
+        final String userId = user.getUserId();
         Key<Profile> profileKey = Key.create(Profile.class, userId);
-
-        // TODO (Lesson 4)
-        // Allocate a key for the conference -- let App Engine allocate the ID
-        // Don't forget to include the parent Profile in the allocated ID
         final Key<Conference> conferenceKey = factory().allocateId(profileKey, Conference.class);
-
-        // TODO (Lesson 4)
-        // Get the Conference Id from the Key
         final long conferenceId = conferenceKey.getId();
+        final Queue queue = QueueFactory.getDefaultQueue();
 
-        // TODO (Lesson 4)
-        // Get the existing Profile entity for the current user if there is one
-        // Otherwise create a new Profile entity with default values
-        Profile profile = getProfileFromUser(user);
-
-        // TODO (Lesson 4)
-        // Create a new Conference Entity, specifying the user's Profile entity
-        // as the parent of the conference
-        Conference conference = new Conference(conferenceId, userId, conferenceForm);
-
-        // TODO (Lesson 4)
-        // Save Conference and Profile Entities
-         ofy().save().entities(conference, profile).now();
-
-         return conference;
-         }
+        // Start a transaction.
+        Conference conference = ofy().transact(new Work<Conference>() {
+            @Override
+            public Conference run() {
+                // Fetch user's Profile.
+                Profile profile = getProfileFromUser(user);
+                Conference conference = new Conference(conferenceId, userId, conferenceForm);
+                // Save Conference and Profile.
+                ofy().save().entities(conference, profile).now();
+                queue.add(ofy().getTransaction(),
+                        TaskOptions.Builder.withUrl("/tasks/send_confirmation_email")
+                        .param("email", profile.getMainEmail())
+                        .param("conferenceInfo", conference.toString()));
+                return conference;
+            }
+        });
+        return conference;
+    }
 
     /** Code to add at the start of querying for conferences **/
 
